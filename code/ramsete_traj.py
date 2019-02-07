@@ -93,8 +93,11 @@ class Pose2d:
 
 
 def ramsete(pose_desired, v_desired, omega_desired, pose, b, zeta):
+    #print("des x=", pose_desired.x)
+    #print("x=", pose.x)
     e = pose_desired - pose
     e.rotate(-pose.theta)
+    print("e=({}, {}, {})".format(e.x, e.y, e.theta))
 
     k = 2 * zeta * math.sqrt(omega_desired ** 2 + b * v_desired ** 2)
     v = v_desired * math.cos(e.theta) + k * e.x
@@ -178,7 +181,7 @@ class Drivetrain(frccnt.System):
 
 
 def main():
-    dt = 0.02
+    dt = 0.00505
     drivetrain = Drivetrain(dt)
 
     import csv
@@ -189,38 +192,24 @@ def main():
     thetaprof = []
     vprof = []
     omegaprof = []
-    current_t = 0
 
     with open("ramsete_traj.csv", "r") as trajectory_file:
         reader = csv.reader(trajectory_file, delimiter=",")
         trajectory_file.readline()
         for row in reader:
-            current_t += float(row[0])
-            t.append(current_t)
+            t.append(float(row[0]))
             xprof.append(float(row[1]))
             yprof.append(float(row[2]))
-            theta = float(row[7])
+            theta = float(row[3])
             if theta > np.pi:
                 thetaprof.append(2.0 * np.pi - theta)
             else:
                 thetaprof.append(theta)
             vprof.append(float(row[4]))
-
-            if len(thetaprof) > 1:
-                if thetaprof[-1] > np.pi:
-                    heading2 = 2.0 * np.pi - thetaprof[-1]
-                else:
-                    heading2 = thetaprof[-1]
-                if thetaprof[-2] > np.pi:
-                    heading1 = 2.0 * np.pi - thetaprof[-2]
-                else:
-                    heading1 = thetaprof[-2]
-                omegaprof.append((heading2 - heading1) / float(row[0]))
-            else:
-                omegaprof.append(0)
+            omegaprof.append(float(row[5]))
 
     # Initial robot pose
-    pose = Pose2d(xprof[0] + 2, yprof[0], 0)
+    pose = Pose2d(xprof[0], yprof[0], 0)
     desired_pose = Pose2d()
 
     # Ramsete tuning constants
@@ -232,7 +221,9 @@ def main():
 
     x_rec = []
     y_rec = []
+    vdesref_rec = []
     vref_rec = []
+    omegadesref_rec = []
     omegaref_rec = []
     v_rec = []
     omega_rec = []
@@ -249,13 +240,19 @@ def main():
         # pose_desired, v_desired, omega_desired, pose, b, zeta
         vref, omegaref = ramsete(desired_pose, vprof[i], omegaprof[i], pose, b, zeta)
         vl, vr = get_diff_vels(vref, omegaref, drivetrain.rb * 2.0)
+        if abs(vl) > 4.7 or abs(vr) > 4.7:
+            v = max(abs(vl), abs(vr))
+            vl = vl / v * 4.7
+            vr = vr / v * 4.7
         next_r = np.array([[vl], [vr]])
         drivetrain.update(next_r)
         vc = (drivetrain.x[0, 0] + drivetrain.x[1, 0]) / 2.0
         omega = (drivetrain.x[1, 0] - drivetrain.x[0, 0]) / (2.0 * drivetrain.rb)
 
         # Log data for plots
+        vdesref_rec.append(vprof[i])
         vref_rec.append(vref)
+        omegadesref_rec.append(omegaprof[i])
         omegaref_rec.append(omegaref)
         x_rec.append(pose.x)
         y_rec.append(pose.y)
@@ -299,12 +296,39 @@ def main():
     plt.subplot(num_plots, 1, 1)
     plt.title("Time domain responses")
     plt.ylabel("Velocity (m/s)")
-    plt.plot(t, vref_rec, label="Reference")
+    plt.plot(t, vref_rec, label="Reference cmd from Ramsete")
+    plt.plot(t, vdesref_rec, label="Reference from PFv2")
     plt.plot(t, v_rec, label="Estimated state")
     plt.legend()
     plt.subplot(num_plots, 1, 2)
     plt.ylabel("Angular rate (rad/s)")
-    plt.plot(t, omegaref_rec, label="Reference")
+    plt.plot(t, omegaref_rec, label="Reference cmd from Ramsete")
+    plt.plot(t, omegadesref_rec, label="Reference from PFv2")
+    plt.plot(t, omega_rec, label="Estimated state")
+    plt.legend()
+    plt.subplot(num_plots, 1, 3)
+    plt.ylabel("Left voltage (V)")
+    plt.plot(t, ul_rec, label="Control effort")
+    plt.legend()
+    plt.subplot(num_plots, 1, 4)
+    plt.ylabel("Right voltage (V)")
+    plt.plot(t, ur_rec, label="Control effort")
+    plt.legend()
+    plt.xlabel("Time (s)")
+
+    plt.figure(4)
+    num_plots = 4
+    plt.subplot(num_plots, 1, 1)
+    plt.title("Time domain responses")
+    plt.ylabel("Left velocity (m/s)")
+    plt.plot(t, vref_rec, label="Reference cmd from Ramsete")
+    plt.plot(t, vdesref_rec, label="Reference from PFv2")
+    plt.plot(t, v_rec, label="Estimated state")
+    plt.legend()
+    plt.subplot(num_plots, 1, 2)
+    plt.ylabel("Angular rate (rad/s)")
+    plt.plot(t, omegaref_rec, label="Reference cmd from Ramsete")
+    plt.plot(t, omegadesref_rec, label="Reference from PFv2")
     plt.plot(t, omega_rec, label="Estimated state")
     plt.legend()
     plt.subplot(num_plots, 1, 3)
