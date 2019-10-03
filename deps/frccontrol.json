@@ -1,6 +1,6 @@
 [
     {
-        "commit": "7fa04016bf0d7d587cc9b8c81058c9aafc71c4fa",
+        "commit": "61fe5a6eaf0fe15027e695395a5862f1a68510e6",
         "depends": [
             "control",
             "slycot"
